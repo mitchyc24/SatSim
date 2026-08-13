@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}SatSim &mdash; Not found{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Not found</h1>
+  <p>{{ message }}</p>
+  <p><a class="btn" href="{{ url_for('web.index') }}">Back to scenarios</a></p>
+</section>
+{% endblock %}
