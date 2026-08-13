@@ -75,6 +75,19 @@ plot rendering. Keeping `simulate` side-effect-free makes it directly
 reusable for future features (parameter sweeps, optimization loops) and
 trivially testable.
 
+### Degradation policy
+
+The analysis products (metrics, pass schedule, CSV export) and the
+presentation artifacts (matplotlib figures) fail independently. Plot
+rendering runs inside `_render_plots`, which catches everything — an
+unimportable or misbuilt matplotlib, an unwritable plots directory, a
+rendering bug — records the reason in the run's `plots_error` metric, and
+lets the run persist. A completed simulation is never discarded because a
+figure could not be drawn; the UI shows the reason where the plot would
+have been. Apply the same rule to future optional outputs: compute the
+analysis first, then attempt presentation, and never let the second
+invalidate the first.
+
 ## Accuracy posture
 
 This is a **viability-analysis** tool, not an operational flight-dynamics

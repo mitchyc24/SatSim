@@ -8,6 +8,7 @@ with persistence and plot generation for the web/API layers.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -21,6 +22,8 @@ from ..core.frames import ecef_to_geodetic, eci_to_ecef_km, time_grid
 from ..core.propagator import propagate_elements
 from ..models import PassRecord, Scenario, SimulationRun
 from .scenarios import ValidationError, get_scenario
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -165,15 +168,23 @@ def simulate(scenario: Scenario) -> SimulationOutput:
 
 
 def run_scenario(session, scenario_id: int, plots_dir: str = None) -> SimulationRun:
-    """Simulate a scenario, persist the run + passes, and render plots."""
+    """Simulate a scenario, persist the run + passes, and render plots.
+
+    Plot rendering is best-effort: figures are a presentation artifact,
+    while the metrics and pass schedule are the analysis product.  If
+    matplotlib is missing or broken in the local environment the run is
+    still stored and reported, with the failure recorded under the
+    ``plots_error`` metric.
+    """
     scenario = get_scenario(session, scenario_id)
     output = simulate(scenario)
+    metrics = output.metrics_dict()
 
     run = SimulationRun(
         scenario_id=scenario.id,
         status="completed",
         elapsed_s=output.elapsed_s,
-        metrics_json=json.dumps(output.metrics_dict()),
+        metrics_json=json.dumps(metrics),
     )
     session.add(run)
     session.flush()  # allocate run.id for pass records and plot names
@@ -190,11 +201,34 @@ def run_scenario(session, scenario_id: int, plots_dir: str = None) -> Simulation
         ))
 
     if plots_dir is not None:
-        # Imported lazily so headless/scripted use never pays the
-        # matplotlib import cost.
-        from ..plotting import save_run_plots
-
-        run.plots_json = json.dumps(save_run_plots(output, plots_dir, run.id))
+        plots, plots_error = _render_plots(output, plots_dir, run.id)
+        run.plots_json = json.dumps(plots)
+        if plots_error:
+            metrics["plots_error"] = plots_error
+            run.metrics_json = json.dumps(metrics)
 
     session.commit()
     return run
+
+
+def _render_plots(output: SimulationOutput, plots_dir: str, run_id: int):
+    """Render run figures, returning ``(file_names, error_message)``.
+
+    Any failure -- a missing or misbuilt matplotlib, an unwritable plots
+    directory, a rendering bug -- is caught and reported rather than
+    discarding a completed simulation.
+    """
+    try:
+        # Imported lazily so headless/scripted use never pays the
+        # matplotlib import cost, and so an import-time failure (e.g. a
+        # broken native extension) is contained here.
+        from ..plotting import save_run_plots
+
+        return save_run_plots(output, plots_dir, run_id), None
+    except Exception as exc:
+        message = "%s: %s" % (type(exc).__name__, exc)
+        logger.warning(
+            "Plot rendering failed for run %s; metrics and passes were "
+            "saved. %s", run_id, message,
+        )
+        return [], message
