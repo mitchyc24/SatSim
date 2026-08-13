@@ -46,6 +46,13 @@
   {% if run.plot_files %}
     <img class="plot" src="{{ url_for('web.plot_file', filename=run.plot_files[0]) }}"
          alt="Ground tracks for {{ scenario.name }}">
+  {% elif metrics.get('plots_error') %}
+    <p class="notice">
+      Plot rendering was unavailable for this run
+      (<code>{{ metrics['plots_error'] }}</code>).
+      The metrics and pass schedule below are complete &mdash; re-run the
+      scenario once matplotlib is working to generate the figures.
+    </p>
   {% else %}
     <p class="muted">No plots were generated for this run.</p>
   {% endif %}
