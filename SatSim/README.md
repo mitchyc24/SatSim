@@ -82,6 +82,27 @@ curl -X POST http://127.0.0.1:5000/api/scenarios \
 | `/api/runs/<id>` | GET | Run metrics + pass list |
 | `/api/runs/<id>/passes.csv` | GET | Pass schedule as CSV |
 
+## Troubleshooting
+
+**`ImportError: DLL load failed while importing ft2font`** (Windows/Anaconda)
+
+matplotlib's native extension cannot load — usually an architecture
+mismatch or a mixed conda/pip install of matplotlib or its freetype
+dependency. SatSim treats plots as optional, so simulations still run and
+report full metrics and pass schedules; the results page shows a notice in
+place of the figures. To restore plotting:
+
+```bat
+conda install --force-reinstall freetype matplotlib
+```
+
+If that doesn't clear it, check for a stray pip copy shadowing the conda
+one (`pip uninstall matplotlib`, then reinstall via conda) and confirm the
+interpreter architecture matches the packages
+(`python -c "import struct; print(struct.calcsize('P') * 8)"` should print
+`64` for a 64-bit Anaconda). Re-run the scenario afterwards to generate the
+figures.
+
 ## Architecture
 
 ```

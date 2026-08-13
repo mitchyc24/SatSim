@@ -164,6 +164,56 @@ def test_full_simulation_cycle(client):
     assert response.status_code == 400
 
 
+def test_run_survives_broken_plotting(client, monkeypatch):
+    """A broken matplotlib install must not discard a completed run.
+
+    Mirrors the real-world failure of an Anaconda matplotlib whose
+    native extension will not load ("DLL load failed while importing
+    ft2font"): the import inside run_scenario raises, but the metrics
+    and pass schedule are still persisted and served.
+    """
+    def _boom(*args, **kwargs):
+        raise ImportError(
+            "DLL load failed while importing ft2font: "
+            "%1 is not a valid Win32 application."
+        )
+
+    # run_scenario's guard wraps both the import of satsim.plotting and
+    # the call into it, so failing the call exercises the same handler
+    # that catches an unimportable matplotlib.
+    monkeypatch.setattr("satsim.plotting.save_run_plots", _boom)
+
+    scenario = _create_scenario(client)
+    base = "/api/scenarios/%d" % scenario["id"]
+    _post_json(client, base + "/walker", {
+        "total_satellites": 4, "planes": 2, "relative_phasing": 1,
+        "altitude_km": 550.0, "inclination_deg": 53.0,
+    })
+    _post_json(client, base + "/ground-stations", {
+        "name": "Ottawa", "latitude_deg": 45.42, "longitude_deg": -75.70,
+    })
+
+    response = client.post(base + "/run")
+    assert response.status_code == 201, response.data
+    run = json.loads(response.data)
+
+    # The analysis itself succeeded and was stored in full.
+    assert run["status"] == "completed"
+    assert run["metrics"]["num_satellites"] == 4
+    assert "Ottawa" in run["metrics"]["stations"]
+    assert "ft2font" in run["metrics"]["plots_error"]
+
+    detail = json.loads(client.get("/api/runs/%d" % run["id"]).data)
+    assert detail["num_passes"] == len(detail["passes"])
+
+    # CSV export and the results page still work without figures.
+    assert client.get("/api/runs/%d/passes.csv" % run["id"]).status_code == 200
+    page = client.get("/runs/%d" % run["id"])
+    assert page.status_code == 200
+    assert b"Station viability" in page.data
+    assert b"Plot rendering was unavailable" in page.data
+
+
 def test_web_pages_render(client, app):
     # Index
     response = client.get("/")

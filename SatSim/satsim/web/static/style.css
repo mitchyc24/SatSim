@@ -222,6 +222,25 @@ input:focus, select:focus {
   border: 1px solid #f0cccc;
   color: var(--danger);
 }
+.flash-warning {
+  background: #fdf6e8;
+  border: 1px solid #f0e0bb;
+  color: #7a5300;
+}
+
+/* Inline notice inside a card (e.g. figures unavailable) */
+.notice {
+  background: #fdf6e8;
+  border: 1px solid #f0e0bb;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #7a5300;
+  font-size: 14px;
+}
+.notice code {
+  font-size: 12px;
+  word-break: break-word;
+}
 
 .footer {
   color: var(--ink-muted);
