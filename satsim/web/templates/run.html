@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}SatSim &mdash; Run #{{ run.id }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Run #{{ run.id }} &mdash; {{ scenario.name }}</h1>
+    <p class="muted">
+      Executed {{ run.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC &middot;
+      {{ metrics.get('num_satellites', 0) }} satellites &middot;
+      {{ metrics.get('num_stations', 0) }} stations &middot;
+      computed in {{ '%.1f'|format(run.elapsed_s or 0) }} s
+    </p>
+  </div>
+  <div class="page-head-actions">
+    <a class="btn" href="{{ url_for('api.run_passes_csv', run_id=run.id) }}">Download passes CSV</a>
+    <a class="btn" href="{{ url_for('web.scenario_detail', scenario_id=scenario.id) }}">Back to scenario</a>
+  </div>
+</div>
+
+<section class="stat-row">
+  <div class="stat-tile">
+    <div class="stat-label">Network coverage</div>
+    <div class="stat-value">{{ network.get('coverage_fraction', 0)|pct }}</div>
+    <div class="stat-sub">time with &ge;1 link available</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Total passes</div>
+    <div class="stat-value">{{ network.get('num_passes', 0) }}</div>
+    <div class="stat-sub">over {{ metrics.get('duration_s', 0)|duration }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Longest outage</div>
+    <div class="stat-value">{{ network.get('max_gap_s', 0)|duration }}</div>
+    <div class="stat-sub">max gap, all stations combined</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Mean pass</div>
+    <div class="stat-value">{{ network.get('mean_pass_duration_s', 0)|duration }}</div>
+    <div class="stat-sub">average contact duration</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Ground tracks</h2>
+  {% if run.plot_files %}
+    <img class="plot" src="{{ url_for('web.plot_file', filename=run.plot_files[0]) }}"
+         alt="Ground tracks for {{ scenario.name }}">
+  {% else %}
+    <p class="muted">No plots were generated for this run.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Station viability</h2>
+  <div class="table-scroll">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Station</th>
+          <th>Coverage</th>
+          <th>Contact time</th>
+          <th>Passes</th>
+          <th>Mean pass</th>
+          <th>Max pass</th>
+          <th>Mean gap</th>
+          <th>Max gap</th>
+          <th>Mean visible sats</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for name, r in stations.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>{{ r.get('coverage_fraction', 0)|pct }}</td>
+          <td>{{ r.get('total_contact_s', 0)|duration }}</td>
+          <td>{{ r.get('num_passes', 0) }}</td>
+          <td>{{ r.get('mean_pass_duration_s', 0)|duration }}</td>
+          <td>{{ r.get('max_pass_duration_s', 0)|duration }}</td>
+          <td>{{ r.get('mean_gap_s', 0)|duration }}</td>
+          <td>{{ r.get('max_gap_s', 0)|duration }}</td>
+          <td>{{ '%.2f'|format(r.get('mean_visible_count', 0)) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if run.plot_files|length > 1 %}
+<section class="card">
+  <h2>Station access profiles</h2>
+  {% for plot in run.plot_files[1:] %}
+    <img class="plot" src="{{ url_for('web.plot_file', filename=plot) }}"
+         alt="Station access profile">
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Pass schedule <span class="count">{{ run.passes|length }}</span></h2>
+  {% if run.passes %}
+    <div class="table-scroll table-tall">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th><th>Satellite</th><th>Station</th>
+            <th>AOS (UTC)</th><th>LOS (UTC)</th>
+            <th>Duration</th><th>Max elev (&deg;)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in run.passes %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ p.satellite_name }}</td>
+            <td>{{ p.station_name }}</td>
+            <td>{{ p.start_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ p.end_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ p.duration_s|duration }}</td>
+            <td>{{ '%.1f'|format(p.max_elevation_deg) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted">No passes occurred in this scenario window.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}SatSim &mdash; Scenarios{% endblock %}
+{% block content %}
+
+<h1>Scenarios</h1>
+<p class="lede">
+  A scenario bundles an epoch, an analysis window, satellites, and ground
+  stations. Build a constellation, run the simulation, and review coverage
+  and pass metrics.
+</p>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Create scenario</h2>
+    <form method="post" action="{{ url_for('web.create_scenario') }}" class="form-grid">
+      <label>Name
+        <input type="text" name="name" required placeholder="LEO comms study">
+      </label>
+      <label>Epoch (UTC)
+        <input type="datetime-local" name="start_time" required value="2026-01-01T00:00">
+      </label>
+      <label>Duration (hours)
+        <input type="number" name="duration_hours" step="0.5" min="0.5" value="24">
+      </label>
+      <label>Time step (seconds)
+        <input type="number" name="time_step_s" step="1" min="1" value="60">
+      </label>
+      <label class="span-2">Description
+        <input type="text" name="description" placeholder="Optional notes">
+      </label>
+      <div class="span-2">
+        <button type="submit" class="btn btn-primary">Create scenario</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Existing scenarios</h2>
+    {% if scenarios %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Epoch (UTC)</th><th>Window</th>
+            <th>Sats</th><th>Stations</th><th>Runs</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in scenarios %}
+          <tr>
+            <td><a href="{{ url_for('web.scenario_detail', scenario_id=s.id) }}">{{ s.name }}</a></td>
+            <td>{{ s.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ s.duration_s|duration }}</td>
+            <td>{{ s.satellites|length }}</td>
+            <td>{{ s.ground_stations|length }}</td>
+            <td>{{ s.runs|length }}</td>
+            <td>
+              <form method="post"
+                    action="{{ url_for('web.delete_scenario', scenario_id=s.id) }}"
+                    onsubmit="return confirm('Delete scenario {{ s.name }}?');">
+                <button type="submit" class="btn btn-small btn-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No scenarios yet &mdash; create one to get started.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% endblock %}

@@ -1,0 +1,22 @@
+# SatSim dependencies, pinned to match the target environment described
+# in "Paython Environment Constraints.txt" (Anaconda 2021.11 / Python 3.9).
+# All of these are already present in that environment.
+#
+# The code also runs on current releases (validated with numpy 2.x,
+# scipy 1.17, astropy 8, pandas 2.x, Flask 3.1, SQLAlchemy 2.0,
+# matplotlib 3.10); on a modern Python, install without version pins.
+
+numpy==1.20.3
+scipy==1.7.1
+astropy==4.3.1
+pandas==1.3.4
+matplotlib==3.4.3
+Flask==1.1.2
+Jinja2==2.11.3
+Werkzeug==2.0.2
+itsdangerous==2.0.1
+click==8.0.3
+SQLAlchemy==1.4.22
+
+# Development / testing
+pytest==6.2.4

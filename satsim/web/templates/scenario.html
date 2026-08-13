@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}SatSim &mdash; {{ scenario.name }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ scenario.name }}</h1>
+    <p class="muted">
+      Epoch {{ scenario.start_time.strftime('%Y-%m-%d %H:%M') }} UTC &middot;
+      window {{ scenario.duration_s|duration }} &middot;
+      step {{ scenario.time_step_s|int }} s
+      {% if scenario.description %} &middot; {{ scenario.description }}{% endif %}
+    </p>
+  </div>
+  <form method="post" action="{{ url_for('web.run_simulation', scenario_id=scenario.id) }}">
+    <button type="submit" class="btn btn-primary btn-large">Run simulation</button>
+  </form>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Satellites <span class="count">{{ scenario.satellites|length }}</span></h2>
+    {% if scenario.satellites %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th><th>a (km)</th><th>e</th><th>i (&deg;)</th>
+              <th>&Omega; (&deg;)</th><th>&omega; (&deg;)</th><th>&nu; (&deg;)</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sat in scenario.satellites %}
+            <tr>
+              <td>{{ sat.name }}</td>
+              <td>{{ '%.1f'|format(sat.semi_major_axis_km) }}</td>
+              <td>{{ '%.4f'|format(sat.eccentricity) }}</td>
+              <td>{{ '%.2f'|format(sat.inclination_deg) }}</td>
+              <td>{{ '%.2f'|format(sat.raan_deg) }}</td>
+              <td>{{ '%.2f'|format(sat.arg_perigee_deg) }}</td>
+              <td>{{ '%.2f'|format(sat.true_anomaly_deg) }}</td>
+              <td>
+                <form method="post"
+                      action="{{ url_for('web.delete_satellite', scenario_id=scenario.id, satellite_id=sat.id) }}">
+                  <button type="submit" class="btn btn-small btn-danger">&times;</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">No satellites yet. Add one below or generate a Walker constellation.</p>
+    {% endif %}
+
+    <h3>Add satellite</h3>
+    <form method="post" action="{{ url_for('web.add_satellite', scenario_id=scenario.id) }}" class="form-grid">
+      <label>Name <input type="text" name="name" required placeholder="SAT-1"></label>
+      <label>Semi-major axis (km) <input type="number" name="semi_major_axis_km" step="any" required value="6928.137"></label>
+      <label>Eccentricity <input type="number" name="eccentricity" step="any" min="0" max="0.95" value="0"></label>
+      <label>Inclination (&deg;) <input type="number" name="inclination_deg" step="any" min="0" max="180" required value="53"></label>
+      <label>RAAN (&deg;) <input type="number" name="raan_deg" step="any" value="0"></label>
+      <label>Arg. of perigee (&deg;) <input type="number" name="arg_perigee_deg" step="any" value="0"></label>
+      <label>True anomaly (&deg;) <input type="number" name="true_anomaly_deg" step="any" value="0"></label>
+      <div><button type="submit" class="btn">Add satellite</button></div>
+    </form>
+
+    <h3>Generate Walker constellation</h3>
+    <form method="post" action="{{ url_for('web.add_walker', scenario_id=scenario.id) }}" class="form-grid">
+      <label>Total satellites (t) <input type="number" name="total_satellites" min="1" required value="24"></label>
+      <label>Planes (p) <input type="number" name="planes" min="1" required value="3"></label>
+      <label>Phasing (f) <input type="number" name="relative_phasing" min="0" value="1"></label>
+      <label>Altitude (km) <input type="number" name="altitude_km" step="any" required value="550"></label>
+      <label>Inclination (&deg;) <input type="number" name="inclination_deg" step="any" min="0" max="180" required value="53"></label>
+      <label>Name prefix <input type="text" name="name_prefix" value="SAT"></label>
+      <label>RAAN offset (&deg;) <input type="number" name="raan_offset_deg" step="any" value="0"></label>
+      <label>Pattern
+        <select name="pattern">
+          <option value="delta" selected>Delta (360&deg; spread)</option>
+          <option value="star">Star (180&deg; spread)</option>
+        </select>
+      </label>
+      <div><button type="submit" class="btn">Generate constellation</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Ground stations <span class="count">{{ scenario.ground_stations|length }}</span></h2>
+    {% if scenario.ground_stations %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Lat (&deg;)</th><th>Lon (&deg;)</th>
+            <th>Alt (m)</th><th>Min elev (&deg;)</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for gs in scenario.ground_stations %}
+          <tr>
+            <td>{{ gs.name }}</td>
+            <td>{{ '%.3f'|format(gs.latitude_deg) }}</td>
+            <td>{{ '%.3f'|format(gs.longitude_deg) }}</td>
+            <td>{{ '%.0f'|format(gs.altitude_m) }}</td>
+            <td>{{ '%.1f'|format(gs.min_elevation_deg) }}</td>
+            <td>
+              <form method="post"
+                    action="{{ url_for('web.delete_ground_station', scenario_id=scenario.id, station_id=gs.id) }}">
+                <button type="submit" class="btn btn-small btn-danger">&times;</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No ground stations yet.</p>
+    {% endif %}
+
+    <h3>Add ground station</h3>
+    <form method="post" action="{{ url_for('web.add_ground_station', scenario_id=scenario.id) }}" class="form-grid">
+      <label>Name <input type="text" name="name" required placeholder="Ottawa"></label>
+      <label>Latitude (&deg;) <input type="number" name="latitude_deg" step="any" min="-90" max="90" required value="45.42"></label>
+      <label>Longitude (&deg;) <input type="number" name="longitude_deg" step="any" min="-180" max="180" required value="-75.70"></label>
+      <label>Altitude (m) <input type="number" name="altitude_m" step="any" value="0"></label>
+      <label>Min elevation (&deg;) <input type="number" name="min_elevation_deg" step="any" min="0" max="89" value="5"></label>
+      <div><button type="submit" class="btn">Add station</button></div>
+    </form>
+
+    <h2>Simulation runs <span class="count">{{ scenario.runs|length }}</span></h2>
+    {% if scenario.runs %}
+      <table class="table">
+        <thead>
+          <tr><th>Run</th><th>Executed (UTC)</th><th>Passes</th><th>Network coverage</th></tr>
+        </thead>
+        <tbody>
+          {% for run in scenario.runs|reverse %}
+          <tr>
+            <td><a href="{{ url_for('web.run_detail', run_id=run.id) }}">#{{ run.id }}</a></td>
+            <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ run.passes|length }}</td>
+            <td>
+              {% if run.metrics.get('network') %}
+                {{ run.metrics['network']['coverage_fraction']|pct }}
+              {% else %}&mdash;{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No runs yet. Add satellites and stations, then run the simulation.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% endblock %}
