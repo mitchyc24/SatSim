@@ -170,11 +170,12 @@ def simulate(scenario: Scenario) -> SimulationOutput:
 def run_scenario(session, scenario_id: int, plots_dir: str = None) -> SimulationRun:
     """Simulate a scenario, persist the run + passes, and render plots.
 
-    Plot rendering is best-effort: figures are a presentation artifact,
-    while the metrics and pass schedule are the analysis product.  If
-    matplotlib is missing or broken in the local environment the run is
-    still stored and reported, with the failure recorded under the
-    ``plots_error`` metric.
+    Plot rendering never fails the run: figures are a presentation
+    artifact, while the metrics and pass schedule are the analysis
+    product.  If matplotlib is missing or broken in the local
+    environment the figures are drawn by the built-in SVG renderer
+    instead, and the matplotlib failure is recorded under the
+    ``plots_error`` metric so it stays diagnosable.
     """
     scenario = get_scenario(session, scenario_id)
     output = simulate(scenario)
@@ -201,34 +202,50 @@ def run_scenario(session, scenario_id: int, plots_dir: str = None) -> Simulation
         ))
 
     if plots_dir is not None:
-        plots, plots_error = _render_plots(output, plots_dir, run.id)
+        plots, plots_error, renderer = _render_plots(output, plots_dir, run.id)
         run.plots_json = json.dumps(plots)
+        metrics["plots_renderer"] = renderer
         if plots_error:
             metrics["plots_error"] = plots_error
-            run.metrics_json = json.dumps(metrics)
+        run.metrics_json = json.dumps(metrics)
 
     session.commit()
     return run
 
 
 def _render_plots(output: SimulationOutput, plots_dir: str, run_id: int):
-    """Render run figures, returning ``(file_names, error_message)``.
+    """Render run figures, returning ``(file_names, error, renderer)``.
 
-    Any failure -- a missing or misbuilt matplotlib, an unwritable plots
-    directory, a rendering bug -- is caught and reported rather than
-    discarding a completed simulation.
+    matplotlib is tried first.  A broken install is common enough on
+    Windows/Anaconda (``ImportError: DLL load failed while importing
+    ft2font``) that SatSim falls back to :mod:`satsim.plotting_svg`,
+    which needs nothing but numpy, rather than shipping a run with no
+    figures.  ``error`` describes the matplotlib failure even when the
+    fallback succeeded, so the cause stays visible; only if both
+    renderers fail is the run reported without figures.
     """
+    # Imported lazily so headless/scripted use never pays the matplotlib
+    # import cost, and so an import-time failure (a broken native
+    # extension, say) is contained here.
     try:
-        # Imported lazily so headless/scripted use never pays the
-        # matplotlib import cost, and so an import-time failure (e.g. a
-        # broken native extension) is contained here.
         from ..plotting import save_run_plots
 
-        return save_run_plots(output, plots_dir, run_id), None
+        return save_run_plots(output, plots_dir, run_id), None, "matplotlib"
     except Exception as exc:
         message = "%s: %s" % (type(exc).__name__, exc)
         logger.warning(
-            "Plot rendering failed for run %s; metrics and passes were "
-            "saved. %s", run_id, message,
+            "matplotlib rendering failed for run %s (%s); falling back to "
+            "the built-in SVG renderer.", run_id, message,
         )
-        return [], message
+
+    try:
+        from ..plotting_svg import save_run_plots as save_run_plots_svg
+
+        return save_run_plots_svg(output, plots_dir, run_id), message, "svg"
+    except Exception as exc:
+        fallback = "%s: %s" % (type(exc).__name__, exc)
+        logger.warning(
+            "SVG fallback rendering also failed for run %s; metrics and "
+            "passes were saved. %s", run_id, fallback,
+        )
+        return [], "%s (SVG fallback also failed: %s)" % (message, fallback), None

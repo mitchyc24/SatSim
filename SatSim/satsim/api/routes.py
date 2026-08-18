@@ -8,6 +8,8 @@ mirror the capabilities of the web dashboard so scripted studies
 
 from __future__ import annotations
 
+import math
+
 from flask import Blueprint, Response, current_app, jsonify, request
 
 from ..db import db_session
@@ -17,6 +19,11 @@ from ..services.simulation import run_scenario
 from ..utils import parse_utc_datetime
 
 api_bp = Blueprint("api", __name__)
+
+#: Samples per orbit returned by the visualization endpoint.  Enough for
+#: a smooth ring at any zoom the 3D view offers without bloating the
+#: payload for a large constellation.
+ORBIT_SAMPLES = 72
 
 
 @api_bp.errorhandler(ValidationError)
@@ -190,89 +197,72 @@ def get_run(run_id):
 
 @api_bp.route("/scenarios/<int:scenario_id>/visualization", methods=["GET"])
 def get_visualization_data(scenario_id):
-    """Return satellite orbital positions and ground stations for 3D rendering.
+    """Scene description for the 3D view.
 
-    Computes a single orbit's worth of ECI positions for each satellite
-    (converted to unit-sphere coordinates scaled by altitude) and returns
-    ground station lat/lon for plotting on a 3D globe.
+    Everything is returned in Earth radii so the client can render
+    without knowing any physical constants:
+
+    * ``satellites[].orbit_positions`` -- one revolution of the two-body
+      ellipse in ECI, sampled uniformly in time (see
+      :meth:`ClassicalElements.sample_orbit_km`), so a client stepping
+      through the array at a constant rate animates the orbit correctly.
+      ``phase`` is where the satellite sits in that array at the epoch.
+    * ``ground_stations[].position_ecef`` / ``up_ecef`` -- the WGS-84
+      site vector and its local vertical, enough to compute a true
+      elevation angle client-side and draw links only for real contacts.
+    * ``earth_angle_deg`` / ``earth_rotation_deg_s`` -- how to spin the
+      Earth-fixed frame against the inertial orbits.
     """
-    import math
-
-    from ..core.constants import MU_EARTH_KM3_S2, R_EARTH_EQ_KM
+    from ..core.constants import (
+        EARTH_ROTATION_RATE_RAD_S,
+        R_EARTH_EQ_KM,
+    )
+    from ..core.frames import eci_to_ecef_angle_deg
 
     scenario = scenario_svc.get_scenario(db_session, scenario_id)
 
     satellites_data = []
     for sat in scenario.satellites:
-        a = sat.semi_major_axis_km
-        e = sat.eccentricity
-        inc = math.radians(sat.inclination_deg)
-        raan = math.radians(sat.raan_deg)
-        argp = math.radians(sat.arg_perigee_deg)
-        nu0 = math.radians(sat.true_anomaly_deg)
-
-        # Compute orbital period and sample one full orbit (36 points)
-        period_s = 2.0 * math.pi * math.sqrt(a ** 3 / MU_EARTH_KM3_S2)
-        n_points = 36
-        positions = []
-        for i in range(n_points):
-            nu = nu0 + 2.0 * math.pi * i / n_points
-            # Radius in km
-            r_km = a * (1 - e ** 2) / (1 + e * math.cos(nu))
-            # Position in perifocal frame
-            x_pf = r_km * math.cos(nu)
-            y_pf = r_km * math.sin(nu)
-            # Rotate to ECI (simplified, no time-varying RAAN)
-            cos_raan = math.cos(raan)
-            sin_raan = math.sin(raan)
-            cos_argp = math.cos(argp)
-            sin_argp = math.sin(argp)
-            cos_inc = math.cos(inc)
-            sin_inc = math.sin(inc)
-
-            x_eci = (
-                (cos_raan * cos_argp - sin_raan * sin_argp * cos_inc) * x_pf
-                + (-cos_raan * sin_argp - sin_raan * cos_argp * cos_inc) * y_pf
-            )
-            y_eci = (
-                (sin_raan * cos_argp + cos_raan * sin_argp * cos_inc) * x_pf
-                + (-sin_raan * sin_argp + cos_raan * cos_argp * cos_inc) * y_pf
-            )
-            z_eci = (
-                (sin_argp * sin_inc) * x_pf
-                + (cos_argp * sin_inc) * y_pf
-            )
-            # Normalize to Earth radii for 3D rendering
-            scale = r_km / R_EARTH_EQ_KM
-            positions.append([
-                round(x_eci / r_km * scale, 5),
-                round(y_eci / r_km * scale, 5),
-                round(z_eci / r_km * scale, 5),
-            ])
-
+        elements = sat.to_elements()
+        positions = elements.sample_orbit_km(ORBIT_SAMPLES) / R_EARTH_EQ_KM
         satellites_data.append({
             "id": sat.id,
             "name": sat.name,
             "constellation": sat.constellation or "",
-            "perigee_altitude_km": round(a * (1 - e) - R_EARTH_EQ_KM, 1),
-            "orbit_positions": positions,
-            "period_s": round(period_s, 1),
+            "perigee_altitude_km": round(elements.perigee_altitude_km, 1),
+            "apogee_altitude_km": round(elements.apogee_altitude_km, 1),
+            "orbit_positions": [
+                [round(float(v), 5) for v in row] for row in positions
+            ],
+            "phase": round(elements.mean_anomaly_deg / 360.0, 6),
+            "period_s": round(elements.period_s(), 1),
         })
 
     stations_data = []
     for gs in scenario.ground_stations:
+        geometry = gs.to_geometry()
+        position = geometry.ecef_km / R_EARTH_EQ_KM
+        up = geometry.enu_basis[2]
         stations_data.append({
             "id": gs.id,
             "name": gs.name,
             "latitude_deg": gs.latitude_deg,
             "longitude_deg": gs.longitude_deg,
             "altitude_m": gs.altitude_m,
+            "min_elevation_deg": gs.min_elevation_deg,
+            "position_ecef": [round(float(v), 5) for v in position],
+            "up_ecef": [round(float(v), 5) for v in up],
         })
 
     return jsonify({
         "scenario_id": scenario.id,
         "scenario_name": scenario.name,
+        "epoch_utc": scenario.start_time.isoformat(),
+        "duration_s": scenario.duration_s,
         "earth_radius_km": R_EARTH_EQ_KM,
+        "earth_angle_deg": round(
+            eci_to_ecef_angle_deg(scenario.start_time), 4),
+        "earth_rotation_deg_s": math.degrees(EARTH_ROTATION_RATE_RAD_S),
         "satellites": satellites_data,
         "ground_stations": stations_data,
     })

@@ -26,8 +26,12 @@ required at runtime.
   JSON API for scripted parameter sweeps; scenarios, runs, and passes persist
   in SQLite through SQLAlchemy.
 - **Plots** — ground tracks, per-station elevation profiles, and
-  simultaneous-visibility timelines rendered with matplotlib; pass schedules
-  export to CSV via pandas.
+  simultaneous-visibility timelines rendered with matplotlib, with a
+  built-in SVG renderer taking over automatically where matplotlib is
+  missing or broken; pass schedules export to CSV via pandas.
+- **3D view** — inertial orbits over a rotating Earth with ground stations
+  and live contact links, drawn on a plain canvas with no JavaScript
+  dependencies, so it works with no network access.
 
 ## Quickstart
 
@@ -81,16 +85,23 @@ curl -X POST http://127.0.0.1:5000/api/scenarios \
 | `/api/scenarios/<id>/run` | POST | Execute the simulation |
 | `/api/runs/<id>` | GET | Run metrics + pass list |
 | `/api/runs/<id>/passes.csv` | GET | Pass schedule as CSV |
+| `/api/scenarios/<id>/visualization` | GET | Scene data for the 3D view |
 
 ## Troubleshooting
 
 **`ImportError: DLL load failed while importing ft2font`** (Windows/Anaconda)
 
 matplotlib's native extension cannot load — usually an architecture
-mismatch or a mixed conda/pip install of matplotlib or its freetype
-dependency. SatSim treats plots as optional, so simulations still run and
-report full metrics and pass schedules; the results page shows a notice in
-place of the figures. To restore plotting:
+mismatch (a 32-bit DLL under a 64-bit interpreter, which is what
+"`%1 is not a valid Win32 application`" means) or a mixed conda/pip
+install of matplotlib or its freetype dependency.
+
+**Nothing is lost.** SatSim falls back to a built-in SVG renderer that
+needs only numpy, so ground tracks and station access profiles are still
+drawn, and the metrics, pass schedule and CSV export are unaffected. The
+results page notes which renderer drew the figures.
+
+To get matplotlib itself working again:
 
 ```bat
 conda install --force-reinstall freetype matplotlib
@@ -100,8 +111,18 @@ If that doesn't clear it, check for a stray pip copy shadowing the conda
 one (`pip uninstall matplotlib`, then reinstall via conda) and confirm the
 interpreter architecture matches the packages
 (`python -c "import struct; print(struct.calcsize('P') * 8)"` should print
-`64` for a 64-bit Anaconda). Re-run the scenario afterwards to generate the
-figures.
+`64` for a 64-bit Anaconda). Re-run the scenario afterwards to render the
+figures with matplotlib.
+
+**The 3D view sits on "Loading 3D scene…"**
+
+Fixed as of this version: the page used to pull Three.js from a CDN under
+a subresource-integrity hash that could never match, so the browser
+blocked the script on every load — and offline installs had no way to
+fetch it in the first place. The view is now drawn with the browser's own
+2-D canvas and needs no network access. If a stale copy is still cached,
+force-reload the page (Ctrl+F5). Any remaining failure is reported in
+place of the scene rather than left spinning.
 
 ## Architecture
 
@@ -120,7 +141,9 @@ satsim/
 ├── services/      # orchestration between core and persistence
 ├── api/           # REST/JSON blueprint (/api)
 ├── web/           # server-rendered dashboard (templates + static)
-└── plotting.py    # matplotlib figure generation
+├── plot_style.py  # shared palette/typography for both figure backends
+├── plotting.py    # matplotlib figure generation (preferred)
+└── plotting_svg.py # dependency-free SVG figures (fallback)
 ```
 
 The layering is strict: `core` never imports Flask or SQLAlchemy, route

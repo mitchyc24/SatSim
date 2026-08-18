@@ -7,6 +7,10 @@ cycled -- above eight satellites the plots switch to a single-hue
 composite encoding), recessive grid/axes, and identity carried by a
 legend plus direct labels rather than color alone.  The numbers behind
 every figure are also shown as tables on the results page.
+
+This is the preferred backend.  When matplotlib is missing or its
+native extensions are broken, :mod:`satsim.plotting_svg` renders the
+same figures with no third-party dependencies at all.
 """
 
 from __future__ import annotations
@@ -20,25 +24,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Validated categorical palette (light surface), fixed slot order.
-SERIES_COLORS = [
-    "#2a78d6",  # blue
-    "#eb6834",  # orange
-    "#1baf7a",  # aqua
-    "#eda100",  # yellow
-    "#e87ba4",  # magenta
-    "#008300",  # green
-    "#4a3aa7",  # violet
-    "#e34948",  # red
-]
-MAX_INDIVIDUAL_SERIES = len(SERIES_COLORS)
-
-SURFACE = "#fcfcfb"
-INK_PRIMARY = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRIDLINE = "#e1e0d9"
-BASELINE = "#c3c2b7"
+from .plot_style import (
+    BASELINE,
+    GRIDLINE,
+    INK_MUTED,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    MAX_INDIVIDUAL_SERIES,
+    SERIES_COLORS,
+    SURFACE,
+)
 
 _RC = {
     "figure.facecolor": SURFACE,

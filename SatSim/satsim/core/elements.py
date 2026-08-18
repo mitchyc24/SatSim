@@ -90,6 +90,11 @@ class ClassicalElements:
     def period_s(self, mu_km3_s2: float = MU_EARTH_KM3_S2) -> float:
         return 2.0 * math.pi / self.mean_motion_rad_s(mu_km3_s2)
 
+    @property
+    def mean_anomaly_deg(self) -> float:
+        """Mean anomaly at epoch, in degrees."""
+        return true_to_mean_anomaly_deg(self.true_anomaly_deg, self.eccentricity)
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -114,6 +119,36 @@ class ClassicalElements:
             math.radians(self.arg_perigee_deg),
         )
         return rot @ r_pf, rot @ v_pf
+
+    def sample_orbit_km(self, num_points: int = 72,
+                        mu_km3_s2: float = MU_EARTH_KM3_S2) -> np.ndarray:
+        """One full revolution of ECI positions, shape ``(num_points, 3)``.
+
+        Samples are spaced uniformly in **mean** anomaly, i.e. uniformly
+        in time, starting from perigee.  Stepping through the returned
+        array at a constant rate therefore traces the orbit at the right
+        speed -- slow at apogee, fast at perigee -- which sampling in
+        true anomaly would not.  The orbit is the two-body ellipse: no
+        J2, so a sampled ring is a closed loop.  For an accurate
+        trajectory over time use :func:`satsim.core.propagator.propagate_elements`.
+        """
+        if num_points < 3:
+            raise ElementError("num_points must be at least 3")
+        positions = np.empty((num_points, 3), dtype=float)
+        for index in range(num_points):
+            mean_anomaly = 360.0 * index / num_points
+            sample = ClassicalElements(
+                semi_major_axis_km=self.semi_major_axis_km,
+                eccentricity=self.eccentricity,
+                inclination_deg=self.inclination_deg,
+                raan_deg=self.raan_deg,
+                arg_perigee_deg=self.arg_perigee_deg,
+                true_anomaly_deg=mean_to_true_anomaly_deg(
+                    mean_anomaly, self.eccentricity
+                ),
+            )
+            positions[index] = sample.to_state_vector(mu_km3_s2)[0]
+        return positions
 
     @classmethod
     def from_state_vector(

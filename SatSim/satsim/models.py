@@ -201,6 +201,7 @@ class SimulationRun(Base):
             "status": self.status,
             "elapsed_s": self.elapsed_s,
             "metrics": self.metrics,
+            "plots": self.plot_files,
             "num_passes": len(self.passes),
         }
         if include_passes:

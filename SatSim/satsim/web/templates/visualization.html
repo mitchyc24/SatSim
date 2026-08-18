@@ -1,32 +1,63 @@
 {% extends "base.html" %}
-{% block title %}3D View – {{ scenario.name }}{% endblock %}
+{% block title %}3D View &ndash; {{ scenario.name }}{% endblock %}
 
 {% block content %}
-<div class="viz-header">
-  <h1>3D Visualization: {{ scenario.name }}</h1>
-  <p>
-    <a href="{{ url_for('web.scenario_detail', scenario_id=scenario.id) }}">&larr; Back to scenario</a>
-  </p>
-  <div class="viz-legend">
-    <span class="legend-item"><span class="legend-dot" style="background:#00ccff;"></span> Satellites</span>
-    <span class="legend-item"><span class="legend-dot" style="background:#ff4444;"></span> Ground Stations</span>
-    <span class="legend-item"><span class="legend-line" style="border-color:#ffcc00;"></span> Link (visible pass)</span>
+<div class="page-head">
+  <div>
+    <h1>3D view &mdash; {{ scenario.name }}</h1>
+    <p class="muted">
+      Inertial orbits over a rotating Earth from epoch
+      {{ scenario.start_time.strftime('%Y-%m-%d %H:%M') }} UTC.
+      Drag to orbit the camera, scroll to zoom.
+    </p>
+  </div>
+  <div class="page-head-actions">
+    <a class="btn" href="{{ url_for('web.scenario_detail', scenario_id=scenario.id) }}">Back to scenario</a>
   </div>
 </div>
-<div id="viz-container" style="width:100%;height:600px;position:relative;background:#000;border-radius:8px;overflow:hidden;">
-  <div id="viz-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:1.2em;">Loading 3D scene&hellip;</div>
-</div>
-<div class="viz-controls" style="margin-top:1em;">
-  <label><input type="checkbox" id="chk-orbits" checked> Show orbits</label>
-  <label><input type="checkbox" id="chk-links" checked> Show links</label>
-  <label>Speed: <input type="range" id="speed-slider" min="0" max="100" value="50"></label>
+
+{% if not scenario.satellites %}
+  <p class="notice">
+    This scenario has no satellites yet, so only the Earth and any ground
+    stations are drawn.
+    <a href="{{ url_for('web.scenario_detail', scenario_id=scenario.id) }}">Add assets</a>
+    to see orbits here.
+  </p>
+{% endif %}
+
+<div class="viz-legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#7fe6ff;"></span> Satellites</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#ff4444;"></span> Ground stations</span>
+  <span class="legend-item"><span class="legend-line" style="border-color:#ffcc00;"></span> Link (above the site's elevation mask)</span>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb" crossorigin="anonymous"></script>
+<div id="viz-container" class="viz-container">
+  <div id="viz-loading" class="viz-overlay">Starting 3D scene&hellip;</div>
+</div>
+
+<div class="viz-controls">
+  <label><input type="checkbox" id="chk-orbits" checked> Show orbits</label>
+  <label><input type="checkbox" id="chk-links" checked> Show links</label>
+  <label>Speed <input type="range" id="speed-slider" min="0" max="100" value="70"></label>
+  <span id="speed-value" class="muted"></span>
+  <button type="button" class="btn btn-small" id="btn-pause">Pause</button>
+  <button type="button" class="btn btn-small" id="btn-reset">Reset view</button>
+</div>
+<p id="viz-readout" class="viz-readout muted"></p>
+<p class="muted viz-note">
+  Motion here is two-body, so the scene drifts from the J2 analysis over
+  the course of hours &mdash;
+  <a href="{{ url_for('web.scenario_detail', scenario_id=scenario.id) }}">run
+  the scenario</a> for the numbers.
+</p>
+
 <script src="{{ url_for('web.static', filename='visualization.js') }}"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    SatSimViz.init('viz-container', {{ scenario.id }});
+  document.addEventListener('DOMContentLoaded', function () {
+    SatSimViz.init(
+      'viz-container',
+      '{{ url_for('api.get_visualization_data', scenario_id=scenario.id) }}'
+    );
   });
 </script>
 {% endblock %}

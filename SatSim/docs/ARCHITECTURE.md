@@ -78,15 +78,64 @@ trivially testable.
 ### Degradation policy
 
 The analysis products (metrics, pass schedule, CSV export) and the
-presentation artifacts (matplotlib figures) fail independently. Plot
-rendering runs inside `_render_plots`, which catches everything — an
-unimportable or misbuilt matplotlib, an unwritable plots directory, a
-rendering bug — records the reason in the run's `plots_error` metric, and
-lets the run persist. A completed simulation is never discarded because a
-figure could not be drawn; the UI shows the reason where the plot would
-have been. Apply the same rule to future optional outputs: compute the
-analysis first, then attempt presentation, and never let the second
-invalidate the first.
+presentation artifacts (figures) fail independently. Plot rendering runs
+inside `_render_plots`, which catches everything — an unimportable or
+misbuilt matplotlib, an unwritable plots directory, a rendering bug — and
+lets the run persist regardless. A completed simulation is never
+discarded because a figure could not be drawn.
+
+Figures themselves have two backends, tried in order:
+
+| Backend | Module | Output | Needs |
+|---|---|---|---|
+| Preferred | `plotting.py` | PNG | matplotlib |
+| Fallback | `plotting_svg.py` | SVG | numpy only |
+
+Both read their palette and typography from `plot_style.py`, which
+imports nothing, so the two are visually interchangeable and the fallback
+stays importable in an environment where matplotlib is broken. That
+happens more often than it should: a mixed 32/64-bit Anaconda install on
+Windows raises `ImportError: DLL load failed while importing ft2font` the
+moment matplotlib is imported. The run records which backend drew the
+figures in `plots_renderer`, and keeps the matplotlib failure in
+`plots_error` so the cause stays diagnosable rather than silently
+papered over. Only when both backends fail does a run land without
+figures.
+
+Apply the same rule to future optional outputs: compute the analysis
+first, then attempt presentation, and never let the second invalidate the
+first.
+
+## 3D view
+
+`web/static/visualization.js` draws the scene on a plain 2-D canvas with
+no third-party library. An earlier version loaded Three.js from a CDN,
+which broke the view twice over: SatSim is meant to run with no network
+access, and the `integrity` hash on the script tag was the SHA-384 of the
+empty string, so browsers refused to execute the file even when it did
+download. The page then sat on "Loading 3D scene…" forever, because
+nothing surfaced the failure. Keep the view dependency-free; the
+`test_visualization_page_loads_no_external_scripts` test enforces it.
+
+The scene works from `/api/scenarios/<id>/visualization`, which returns
+everything in Earth radii so the client needs no physical constants:
+
+- Orbits are one revolution of the two-body ellipse, sampled uniformly in
+  **mean** anomaly (`ClassicalElements.sample_orbit_km`). Walking the
+  array at a constant rate therefore animates the orbit at the right
+  speed; sampling in true anomaly would run an eccentric orbit backwards
+  in feel, fast at apogee and slow at perigee.
+- Ground stations carry their WGS-84 site vector and local vertical, so
+  the client computes a true topocentric elevation and draws a link only
+  where a real contact exists.
+- `earth_angle_deg` is the ECI→ECEF rotation at the epoch, measured from
+  `eci_to_ecef_km` itself rather than from a sidereal-time formula — GMST
+  is reckoned from the mean equinox of date, which has precessed about a
+  third of a degree away from the GCRS x-axis the propagator uses.
+
+The view is two-body: it drifts from the J2 analysis by a few degrees
+over several hours. It is a qualitative picture of the geometry, and the
+run pages remain the numerical product.
 
 ## Accuracy posture
 

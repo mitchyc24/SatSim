@@ -11,6 +11,7 @@ budget of a viability study.
 
 from __future__ import annotations
 
+import math
 import warnings
 from datetime import datetime
 
@@ -52,6 +53,25 @@ def eci_to_ecef_km(r_eci_km: np.ndarray, times: Time) -> np.ndarray:
         gcrs = GCRS(rep, obstime=times)
         itrs = gcrs.transform_to(ITRS(obstime=times))
     return itrs.cartesian.xyz.to_value(u.km).T.reshape(-1, 3)
+
+
+def eci_to_ecef_angle_deg(epoch: datetime) -> float:
+    """Rotation about the spin axis taking ECI to ECEF at ``epoch``.
+
+    ECI positions equal ``Rz(angle)`` applied to their ECEF counterparts,
+    so a client with this one number can place Earth-fixed assets
+    (ground stations, a graticule) against inertial orbits.
+
+    It is deliberately measured from :func:`eci_to_ecef_km` rather than
+    taken from a sidereal-time formula: GMST is reckoned from the mean
+    equinox of date, which by the 2020s has precessed about a third of a
+    degree away from the GCRS x-axis the propagator works in.  Deriving
+    the angle from the transform the analysis itself uses keeps the 3D
+    view and the numbers on the same frame.
+    """
+    reference = np.array([[1.0, 0.0, 0.0]])
+    ecef = eci_to_ecef_km(reference, time_grid(epoch, np.array([0.0])))
+    return math.degrees(math.atan2(-ecef[0, 1], ecef[0, 0])) % 360.0
 
 
 def ecef_to_geodetic(r_ecef_km: np.ndarray):

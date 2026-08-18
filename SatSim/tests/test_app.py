@@ -165,12 +165,12 @@ def test_full_simulation_cycle(client):
 
 
 def test_run_survives_broken_plotting(client, monkeypatch):
-    """A broken matplotlib install must not discard a completed run.
+    """A broken matplotlib install must not cost a run its figures.
 
     Mirrors the real-world failure of an Anaconda matplotlib whose
     native extension will not load ("DLL load failed while importing
-    ft2font"): the import inside run_scenario raises, but the metrics
-    and pass schedule are still persisted and served.
+    ft2font"): the matplotlib backend raises, the built-in SVG renderer
+    takes over, and the metrics and pass schedule are unaffected.
     """
     def _boom(*args, **kwargs):
         raise ImportError(
@@ -206,12 +206,49 @@ def test_run_survives_broken_plotting(client, monkeypatch):
     detail = json.loads(client.get("/api/runs/%d" % run["id"]).data)
     assert detail["num_passes"] == len(detail["passes"])
 
-    # CSV export and the results page still work without figures.
+    # Figures were still produced -- by the dependency-free fallback.
+    assert run["metrics"]["plots_renderer"] == "svg"
+    assert run["plots"]
+    assert all(name.endswith(".svg") for name in run["plots"])
+    for name in run["plots"]:
+        figure = client.get("/plots/%s" % name)
+        assert figure.status_code == 200
+        assert figure.data.lstrip().startswith(b"<?xml")
+
+    # CSV export and the results page still work.
     assert client.get("/api/runs/%d/passes.csv" % run["id"]).status_code == 200
     page = client.get("/runs/%d" % run["id"])
     assert page.status_code == 200
     assert b"Station viability" in page.data
-    assert b"Plot rendering was unavailable" in page.data
+    assert b"built-in SVG renderer" in page.data
+
+
+def test_run_reports_when_no_renderer_works(client, monkeypatch):
+    """With both backends broken the run is still stored and served."""
+    def _boom(*args, **kwargs):
+        raise ImportError("no plotting stack here")
+
+    monkeypatch.setattr("satsim.plotting.save_run_plots", _boom)
+    monkeypatch.setattr("satsim.plotting_svg.save_run_plots", _boom)
+
+    scenario = _create_scenario(client)
+    base = "/api/scenarios/%d" % scenario["id"]
+    _post_json(client, base + "/walker", {
+        "total_satellites": 2, "planes": 1, "relative_phasing": 0,
+        "altitude_km": 550.0, "inclination_deg": 53.0,
+    })
+    _post_json(client, base + "/ground-stations", {
+        "name": "Ottawa", "latitude_deg": 45.42, "longitude_deg": -75.70,
+    })
+
+    run = json.loads(client.post(base + "/run").data)
+    assert run["status"] == "completed"
+    assert run["plots"] == []
+    assert "SVG fallback also failed" in run["metrics"]["plots_error"]
+
+    page = client.get("/runs/%d" % run["id"])
+    assert page.status_code == 200
+    assert b"No figures could be rendered" in page.data
 
 
 def test_web_pages_render(client, app):

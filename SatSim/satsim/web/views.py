@@ -215,11 +215,18 @@ def run_simulation(scenario_id):
         return redirect(url_for("web.scenario_detail", scenario_id=scenario_id))
     flash("Simulation completed in %.1f s." % (run.elapsed_s or 0.0), "success")
     plots_error = run.metrics.get("plots_error")
-    if plots_error:
+    if plots_error and run.plot_files:
         flash(
-            "Metrics and pass schedule were saved, but plot rendering failed "
-            "(%s). Check the matplotlib install; the analysis results below "
-            "are unaffected." % plots_error,
+            "matplotlib is unavailable in this environment (%s), so the "
+            "figures below were drawn by SatSim's built-in SVG renderer. "
+            "The analysis results are unaffected." % plots_error,
+            "warning",
+        )
+    elif plots_error:
+        flash(
+            "Metrics and pass schedule were saved, but no figures could be "
+            "rendered (%s). The analysis results below are unaffected."
+            % plots_error,
             "warning",
         )
     return redirect(url_for("web.run_detail", run_id=run.id))
