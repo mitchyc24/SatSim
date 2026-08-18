@@ -254,7 +254,7 @@ def get_visualization_data(scenario_id):
             "id": sat.id,
             "name": sat.name,
             "constellation": sat.constellation or "",
-            "altitude_km": round(a * (1 - e) - R_EARTH_EQ_KM, 1),
+            "perigee_altitude_km": round(a * (1 - e) - R_EARTH_EQ_KM, 1),
             "orbit_positions": positions,
             "period_s": round(period_s, 1),
         })

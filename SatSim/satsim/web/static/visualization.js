@@ -197,9 +197,13 @@ var SatSimViz = (function () {
     );
   }
 
-  function animate() {
+  var lastTimestamp = 0;
+
+  function animate(timestamp) {
     requestAnimationFrame(animate);
-    animationTime += 0.016 * speedFactor;
+    var delta = lastTimestamp ? (timestamp - lastTimestamp) / 1000.0 : 0.016;
+    lastTimestamp = timestamp;
+    animationTime += delta * speedFactor;
 
     // Animate satellite positions along orbits
     satellites.forEach(function (sat) {
