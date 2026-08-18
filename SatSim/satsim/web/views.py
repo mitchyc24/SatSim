@@ -239,6 +239,15 @@ def run_detail(run_id):
     )
 
 
+# ----------------------------------------------------------------------
+# 3D Visualization
+# ----------------------------------------------------------------------
+@web_bp.route("/scenarios/<int:scenario_id>/visualization", methods=["GET"])
+def visualization(scenario_id):
+    scenario = scenario_svc.get_scenario(db_session, scenario_id)
+    return render_template("visualization.html", scenario=scenario)
+
+
 @web_bp.route("/plots/<path:filename>", methods=["GET"])
 def plot_file(filename):
     return send_from_directory(current_app.config["PLOTS_DIR"], filename)
