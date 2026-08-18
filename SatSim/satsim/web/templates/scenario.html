@@ -15,6 +15,7 @@
   <form method="post" action="{{ url_for('web.run_simulation', scenario_id=scenario.id) }}">
     <button type="submit" class="btn btn-primary btn-large">Run simulation</button>
   </form>
+  <a href="{{ url_for('web.visualization', scenario_id=scenario.id) }}" class="btn btn-primary btn-large" style="margin-left:0.5em;">3D Visualization</a>
 </div>
 
 <div class="grid-2">

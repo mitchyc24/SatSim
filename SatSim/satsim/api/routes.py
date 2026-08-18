@@ -188,6 +188,96 @@ def get_run(run_id):
     return jsonify(run.to_dict(include_passes=True))
 
 
+@api_bp.route("/scenarios/<int:scenario_id>/visualization", methods=["GET"])
+def get_visualization_data(scenario_id):
+    """Return satellite orbital positions and ground stations for 3D rendering.
+
+    Computes a single orbit's worth of ECI positions for each satellite
+    (converted to unit-sphere coordinates scaled by altitude) and returns
+    ground station lat/lon for plotting on a 3D globe.
+    """
+    import math
+
+    from ..core.constants import MU_EARTH_KM3_S2, R_EARTH_EQ_KM
+
+    scenario = scenario_svc.get_scenario(db_session, scenario_id)
+
+    satellites_data = []
+    for sat in scenario.satellites:
+        a = sat.semi_major_axis_km
+        e = sat.eccentricity
+        inc = math.radians(sat.inclination_deg)
+        raan = math.radians(sat.raan_deg)
+        argp = math.radians(sat.arg_perigee_deg)
+        nu0 = math.radians(sat.true_anomaly_deg)
+
+        # Compute orbital period and sample one full orbit (36 points)
+        period_s = 2.0 * math.pi * math.sqrt(a ** 3 / MU_EARTH_KM3_S2)
+        n_points = 36
+        positions = []
+        for i in range(n_points):
+            nu = nu0 + 2.0 * math.pi * i / n_points
+            # Radius in km
+            r_km = a * (1 - e ** 2) / (1 + e * math.cos(nu))
+            # Position in perifocal frame
+            x_pf = r_km * math.cos(nu)
+            y_pf = r_km * math.sin(nu)
+            # Rotate to ECI (simplified, no time-varying RAAN)
+            cos_raan = math.cos(raan)
+            sin_raan = math.sin(raan)
+            cos_argp = math.cos(argp)
+            sin_argp = math.sin(argp)
+            cos_inc = math.cos(inc)
+            sin_inc = math.sin(inc)
+
+            x_eci = (
+                (cos_raan * cos_argp - sin_raan * sin_argp * cos_inc) * x_pf
+                + (-cos_raan * sin_argp - sin_raan * cos_argp * cos_inc) * y_pf
+            )
+            y_eci = (
+                (sin_raan * cos_argp + cos_raan * sin_argp * cos_inc) * x_pf
+                + (-sin_raan * sin_argp + cos_raan * cos_argp * cos_inc) * y_pf
+            )
+            z_eci = (
+                (sin_argp * sin_inc) * x_pf
+                + (cos_argp * sin_inc) * y_pf
+            )
+            # Normalize to Earth radii for 3D rendering
+            scale = r_km / R_EARTH_EQ_KM
+            positions.append([
+                round(x_eci / r_km * scale, 5),
+                round(y_eci / r_km * scale, 5),
+                round(z_eci / r_km * scale, 5),
+            ])
+
+        satellites_data.append({
+            "id": sat.id,
+            "name": sat.name,
+            "constellation": sat.constellation or "",
+            "altitude_km": round(a * (1 - e) - R_EARTH_EQ_KM, 1),
+            "orbit_positions": positions,
+            "period_s": round(period_s, 1),
+        })
+
+    stations_data = []
+    for gs in scenario.ground_stations:
+        stations_data.append({
+            "id": gs.id,
+            "name": gs.name,
+            "latitude_deg": gs.latitude_deg,
+            "longitude_deg": gs.longitude_deg,
+            "altitude_m": gs.altitude_m,
+        })
+
+    return jsonify({
+        "scenario_id": scenario.id,
+        "scenario_name": scenario.name,
+        "earth_radius_km": R_EARTH_EQ_KM,
+        "satellites": satellites_data,
+        "ground_stations": stations_data,
+    })
+
+
 @api_bp.route("/runs/<int:run_id>/passes.csv", methods=["GET"])
 def run_passes_csv(run_id):
     import pandas as pd
